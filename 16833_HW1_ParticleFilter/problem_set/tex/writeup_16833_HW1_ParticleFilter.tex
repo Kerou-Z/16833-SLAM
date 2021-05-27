@@ -1,0 +1,330 @@
+\documentclass[12pt, a4paper]{article}
+\usepackage{geometry}
+\geometry{verbose,tmargin=2cm,bmargin=2cm,lmargin=3cm,rmargin=3cm}
+\usepackage{verbatim}
+\usepackage[normalem]{ulem}
+\usepackage{colortbl}
+\usepackage{algorithm,algpseudocode}
+\usepackage[colorlinks,citecolor=red,urlcolor=blue,bookmarks=false,hypertexnames=true]{hyperref}
+
+\makeatletter
+\date{}
+
+\makeatother 
+
+\begin{document}
+\title{\Large 16-833: Robot Localization and Mapping, Spring 2021\vspace{10pt}\\
+\textbf{Homework 1\\ Robot Localization using Particle Filters}\large \begin{center} \small This homework may be submitted in groups of \textbf{(max) three} people. \end{center}}
+\maketitle
+\begin{flushright}
+\textbf{\uline{Due: Wednesday February 24, 11:59pm, 2021}}
+\par\end{flushright}
+
+\def \ans{1} %0: hide, 1: show
+
+Your homework should be submitted as a\textbf{ typeset PDF file} along
+with a\textbf{ }folder\textbf{ }including\textbf{ code} \textbf{only
+(no data)}. The PDF must be submitted on \textbf{Gradescope}, and
+code submitted on \textbf{Canvas}. If you have questions, please post
+them on Piazza or come to office hours. Please do not post solutions
+or code on Piazza. Discussions are allowed, but each group must write
+and submit their \textbf{own, original }solution. Note that you should
+list the name and Andrew IDs of each student you have discussed with
+on the first page of your PDF file. You have a total of 4 late days,
+use them wisely. As this is a group homework, every late day applies
+to all members of the group. This is a challenging assignment,\textbf{\emph{
+so please start early}}! Good luck and have fun!
+
+\global\long\def\argmin{\operatornamewithlimits{arg\, min}}%
+\global\long\def\argmax{\operatornamewithlimits{arg\, max}}%
+
+\section{Overview}
+The goal of this homework is to become familiar with robot localization
+using particle filters, also known as Monte Carlo Localization. In
+particular, you will be implementing a global localization filter
+for a lost indoor mobile robot (global meaning that you do not know
+the initial pose of the robot). Your lost robot is operating in Wean
+Hall with nothing but odometry and a laser rangefinder. Fortunately,
+you have a map of Wean Hall and a deep understanding of particle filtering
+to help it localize.
+
+As you saw in class, particle filters are non-parametric variants
+of the recursive Bayes filter with a resampling step. The Prediction
+Step of the Bayes filter involves sampling particles from a proposal
+distribution, while the Correction Step computes importance weights
+for each particle as the ratio of target and proposal distributions.
+The Resampling Step resamples particles with probabilities proportional
+to their importance weights.
+
+When applying particle filters for robot localization, each particle
+represents a robot pose hypothesis which for a 2D localization case
+includes the $(x,y)$ position and orientation $\theta$ of the robot.
+The Prediction and Correction Steps are derived from robot motion
+and sensor models respectively. This can be summarized as an iterative
+process involving three major steps:
+\begin{enumerate}
+\item Prediction Step: Updating particle poses by sampling particles from
+the \textbf{motion model}, that is $x^{[m]}_t\sim p(x_t|u_t,x^{[m]}_{t-1})$.
+The proposal distribution here is the motion model, $p(x_t|u_t,x_{t-1})$.
+\item Correction Step: Computing an importance weight $w^{[m]}_t$ for each
+particle as the ratio of target and proposal distributions. This reduces
+to computing weights using the \textbf{sensor model}, that is $w^{[m]}_t = p(z_t|x^{[m]}_{t},\mathcal{M})$.
+\item Resampling Step: Resampling particles for the next time step with
+probabilities proportial to their importance weights.
+\end{enumerate}
+Here, $m$ is the particle index, $t$ is the current time step, and
+$\mathcal{M}$ is the occupancy map. $x^{[m]}_t, w^{[m]}_t$ is the
+robot pose and importance weight of particle $m$ at time $t$. 
+
+
+\section{Monte Carlo Localization}
+
+Monte Carlo Localization (MCL), a popular localization algorithm,
+is essentially the application of particle filter for mobile robot
+localization. You can refer to \textbf{Section 4.3 }of \cite{thrun2005probabilistic}
+for details on the MCL algorithm. Algorithm \ref{algo:mclAlgo}, taken
+from \cite{thrun2005probabilistic}, describes the particle filter
+algorithm applied for robot localization. 
+
+\begin{algorithm}[!t]
+\caption{Particle Filter for Robot Localization}\label{algo:mclAlgo}
+\begin{algorithmic}[1]
+\State $\bar{\mathcal{X}}_t$ = ${\mathcal{X}}_t$ = $\phi$
+\For{$m$ = $1$ to $M$}
+	\State sample $x^{[m]}_t\sim p(x_t\ |\ u_t,x^{[m]}_{t-1})$
+	\Comment{Motion model}
+	\State $w^{[m]}_t$ = $ p(z_t\ |\ x^{[m]}_{t})$
+	\Comment{Sensor model}
+	\State $\bar{\mathcal{X}}_t$ = $\bar{\mathcal{X}}_t$ + $\left<x^{[m]}_t, w^{[m]}_t\right>$
+\EndFor
+\For{$m$ = $1$ to $M$}
+	\State draw $i$ with probability $\propto$ $w^{[i]}_t$
+	\Comment{Resampling}
+	\State add $x^{[i]}_t$ to ${\mathcal{X}}_t$
+\EndFor
+\State \Return ${\mathcal{X}}_t$
+\end{algorithmic}
+\end{algorithm}
+
+As you can see, the MCL algorithm requires knowledge of the robot
+motion and sensor models, and also of the resampling process to be
+used. We briefly describe these three components and point you to
+resources with more details and pseudo-codes.
+
+\subsection*{Motion Model}
+
+The motion model $p(x_t|u_t,x_{t-1})$ is needed as part of the prediction
+step for updating particle poses from the previous time step using
+odometry readings. \textbf{Chapter 5 }of \cite{thrun2005probabilistic}
+details two types of motion models, the Odometry Motion Model and
+the Velocity Motion Model. You can use either model for sampling particles
+according to $x^{[m]}_t\sim p(x_t|u_t,x^{[m]}_{t-1})$. The Odometry
+Motion Model might be more straightforward to implement since that
+uses odometry measurements directly as a basis for computing posteriors
+over the robot poses. 
+
+\subsection*{Sensor Model}
+
+The sensor model $p(z_t|x_t,m)$ is needed as part of the correction
+step for computing importance weights (proportional to observation
+likelihood) for each particle. Since the robot is equipped with a
+laser range finder sensor, we'll be using a beam measurement model
+of range finders. \textbf{Section 6.3 }of \cite{thrun2005probabilistic}
+details this beam measurement model $p(z_t|x_t,m)$ as a mixture of
+four probability densities, each modeling a different type of measurement
+error. You'll have to play around with parameters for these densities
+based on the sensor data logs that you have. You are also free to
+go beyond a mixture of these four probability densities and use a
+measurement model that you think describes the observed laser scans
+better.
+
+Additionally, as part of this beam measurement model, you'll be performing
+ray-casting on the occupancy map so as to compute true range readings
+$z^{k*}_t$ from individual particle positions (shifted to laser position).
+
+\subsection*{Resampling}
+
+As part of the resampling process, particles for the next time step
+are drawn based on their weights in the current time step. A straightforward
+resampling procedure would be sampling from a multinomial distribution
+constructed using importance weights of all particles. However, repetitive
+resampling using such a technique may cause the variance of the particle
+set (as an estimator of the true belief) to increase.
+
+One strategy for reducing the variance in particle filtering is using
+a resampling process known as \emph{low variance sampling}. Another
+strategy is to reduce the frequency at which resampling takes place.
+Refer to the Resampling subsection under \textbf{Section 4.3.4 }of\textbf{
+}\cite{thrun2005probabilistic}\textbf{ }for more details on variance
+reduction and using low variance resampling for particle filters.
+
+
+\section{Implementation}
+
+\subsection*{Resources}
+
+You may use any programming language for implementation. There is
+no real-time-ness requirement, although it is advisable to use something
+faster. Feel free to utilize the techniques that we have
+discussed in class as well as extensions discussed in {[}1{]} or elsewhere.
+You would be performing global localization for a lost indoor mobile
+robot in Wean Hall given a map, odometry readings and laser scans.
+The data directory that you received with this handout (courtesy of
+Mike Montemerlo) has the following files:
+\begin{itemize}
+\item \texttt{data/instruct.txt} -- Format description for the map and the
+data logs.
+\item \texttt{data/log/robotdataN.log} -- Five data logs (odometry and laser
+data). 
+\item \texttt{data/map/wean.dat} -- Map of Wean Hall to use for localization. 
+\item \texttt{data/map/bee-map.c} -- Example map reader in C from BeeSoft that you may use. Note we also provide a Python map reader.
+\item \texttt{assets/wean.gif} -- Image of map (for reference). 
+\item \texttt{assets/robotmovie1.gif} -- Animation of data log 1 (for reference). 
+\end{itemize}
+
+We have also provided you with helper code (in Python) that reads
+in the occupancy map, parses robot sensor logs and implements the
+outer loop of the particle filter algorithm illustrated in Algorithm
+\ref{algo:mclAlgo}. The motion model, sensor model, and resampling
+implementations are left as an exercise for you. 
+\begin{itemize}
+\item \texttt{main.py} -- Parses sensor logs (\texttt{robotdata1.log})
+and implements outer loop of the particle filter algorithm shown in
+Algorithm \ref{algo:mclAlgo}. Relies on SensorModel, MotionModel
+and Resampling classes for returning appropriate values.
+\item \texttt{map\_reader.py} -- Reads in the Wean Hall map (\texttt{wean.dat})
+and computes and displays corresponding occupancy grid map.
+\item \texttt{motion\_model.py, sensor\_model.py, resampling.py} - Provides
+class interfaces for expected input/output arguments. Implementation
+of corresponding algorithms are left as an exercise for you.
+\end{itemize}
+You are free to use the helper code directly or purely for reference
+purposes. To utilize the framework, please start with a Python 3 enviroment. We recommend creating a virtual enviroment 
+using \emph{e.g.} \texttt{conda}, and \texttt{pip install -r requirements.txt} (located in the \texttt{code} directory) for the basic dependencies. A short tutorial for creating a virtual enviroment can be found at \href{https://docs.google.com/document/d/1iAuVGllpk3RMZzBl-kGaA2AlF8Jg5cs00y0ZwkOZ08E/edit}{here}.
+
+\subsection*{Improving Efficiency}
+
+Although there is no real-time-ness requirement, the faster your code,
+the more particles you will be able to use feasibly and faster would
+be your parameter tuning iterations. You'll most probably have to
+apply some implementation 'hacks' to improve performance, for instance,
+\begin{itemize}
+\item Intializing particles in completely unoccupied areas instead of uniformly
+everywhere on the map.
+\item Subsampling the laser scans to say, every 5 degrees, instead of considering
+all 180 range measurements
+\item When computing importance weights based on the sensor model, be cognizant
+of numerical stability issues that may arise when multiplying together
+likelihood probabilities of all range measurements within a scan.
+You might want to numerically scale the weights or replace the multiplication
+of likelihood probabilities with a summation of log likelihoods.
+\item Since motion model and sensor model computations are independent for
+all particles, parallelizing your code would make it much faster.
+\item You'll observe that operations like ray-casting are one of the most
+computationally expensive operations. Think of approaches to make
+this faster, for instance using coarser discrete sampling along the
+ray or possibly even precomputing a look-up table for the raycasts.
+\item Lastly, if you use Python, apply vectorization as much as possible; if you're comfortable with C++, consider using the OpenMP backend (which is a one-liner) to accelerate.
+\end{itemize}
+
+\subsection*{Debugging}
+
+For easier debugging, ensure that you visualize and test individual
+modules like the motion model, sensor model or the resampling separately.
+Some ideas for doing that are,
+\begin{itemize}
+\item Test your motion model separately by using a single particle and plotting
+its trajectory on the occupancy map. The odometry would cause the
+particle position to drift over time globally, but locally the motion
+should still make sense when comparing with given animation of datalog
+1 (\texttt{robotmovie1.gif}).
+\item Cross-check your sensor model mixture probability distribution by
+plotting the $p(z_t|z^*_t)$ graph for some set of values of $z^*_t$. 
+\item Test your ray-casting algorithm outputs by drawing robot position,
+laser scan ranges and the ray casting outputs on the occupancy map
+for multiple time steps.
+\end{itemize}
+
+\section{What to turn in}
+
+You should generate a visualization (video) of your robot localizing
+on \texttt{robotdata1.log} and another log of your choice. Don't
+worry---you're implementation may not work \textbf{all }the time---but
+should perform most of the time for a reasonable number of particles.
+Hyperlinks to the videos must be in the report---we prefer unlisted
+Youtube videos or Google Drive links. Please ensure proper viewing
+permissions are enabled before sharing the links. Please speed-up
+videos to ensure each log is under 2 minutes, and mention the speed
+multiplier in the video or report. \textbf{The report must describe
+your approach, implementation, description of performance, robustness,
+repeatability, and results.} Make sure you describe your motion and
+sensor models, your resampling procedure, as well as the parameters
+you had to tune (and their values). Include some future work/improvement
+ideas in your report as well. Turn in your report\textbf{ }and code
+on \textbf{Gradescope} by the due date. Do not upload the $\mathtt{data/}$
+folder or any other data. Only one group member needs to submit.
+
+\subsection*{Score breakup}
+
+\begin{itemize}
+\item (10 points) Motion Model: implementation correctness, description
+\item (20 points) Sensor Model: implementation correctness, description
+\item (10 points) Resampling Process: implementation correctness,
+description
+\item (10 points) Discussion of parameter tuning
+\item (30 points) Performance
+\item (20 points) Write-up quality, video quality, readability,
+description of performance, and future work
+\item (Extra Credit: 10 points) Kidnapped robot problem
+\item (Extra Credit: 10 points) Adaptive number of particles
+\item (Extra Credit: 5 points) Vectorized Python or fast C++ implementation
+\end{itemize}
+
+\begin{comment}
+10) motion model: implementation correctness, description 20) sensor
+model: implementation correctness, description 10) resampling model:
+implementation correctness, description 10) discussion of parameter
+tuning 30) overall correctness (how well do combining the four work)
+5) videos (we will have difficulty measuring correctness without videos)
+15) write-up quality, readability, and discussion of future work EC
+5 - 15 depending on quality) kidnapped robot EC 5 - 10 depending on
+quality, impact) adaptive particle numbers
+\end{comment}
+
+\vspace{10pt}
+
+\section{Extra credit}
+
+Focus on getting your particle filter to work well before attacking
+the extra credit. Points will be given for an implementation of the
+kidnapped robot problem and adaptive number of particles. Please answer
+the corresponding questions below in your write up.
+
+i. \textbf{Kidnapped robot problem:} The kidnapped robot problem commonly
+refers to a situation where an autonomous robot in operation is carried
+to an arbitrary location. You can simulate such a situation by either
+fusing two of the log files or removing a chunk of readings from one
+log. How would your localization algorithm deal with the uncertainity
+created in a kidnapped robot problem scenario?
+
+ii. \textbf{Adaptive number of particles:} Can you think of a method
+that is more efficient to run, based on reducing the number of particles
+over timesteps? Describe the metric you use for choosing the number
+of particles at any time step.
+
+You will also receive bonus credits provided your implementation is optimized, either with vectorization in Python or acceleration in C++.
+
+\section{Advice}
+
+The performance of your algorithm is dependent on (i) parameter tuning
+and (ii) number of particles. While increasing the number of particles
+gives you better performance, it also leads to increased computational
+time. An ideal implementation has a reasonable number of particles,
+while also not being terribly slow. Consider these factors while deciding
+your language of choice---e.g. choosing between a faster implementation
+in C++ or vectorized optimization in Python vs. using the raw Python skeleton code.
+
+\bibliographystyle{plain}
+\bibliography{references_particlefilter}
+
+\end{document}
