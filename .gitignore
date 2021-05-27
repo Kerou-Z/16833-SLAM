@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 
+16833_HW4_FUSION/dataset/
 # Distribution / packaging
 .Python
 build/
